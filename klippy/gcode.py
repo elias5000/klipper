@@ -10,6 +10,7 @@ import homing
 class GCodeParser:
     error = homing.CommandError
     RETRY_TIME = 0.100
+    COMMAND_BUFFER_SIZE = 32
     def __init__(self, printer, fd):
         self.printer = printer
         self.fd = fd
@@ -245,7 +246,9 @@ class GCodeParser:
                 self.respond_error(msg)
                 if not need_ack:
                     raise
-            self.ack()
+            msg = ' P%d' % self.COMMAND_BUFFER_SIZE - self.pending_commands
+            msg += ' B%d' % self.COMMAND_BUFFER_SIZE - self.pending_commands
+            self.ack(msg)
     m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
     def _process_data(self, eventtime):
         # Read input, separate by newline, and add to pending_commands
@@ -270,13 +273,13 @@ class GCodeParser:
             pending_commands.append("")
         # Handle case where multiple commands pending
         if self.is_processing_data or len(pending_commands) > 1:
-            if len(pending_commands) < 20:
+            if len(pending_commands) < self.COMMAND_BUFFER_SIZE:
                 # Check for M112 out-of-order
                 for line in lines:
                     if self.m112_r.match(line) is not None:
                         self.cmd_M112({})
             if self.is_processing_data:
-                if len(pending_commands) >= 20:
+                if len(pending_commands) >= self.COMMAND_BUFFER_SIZE:
                     # Stop reading input
                     self.reactor.unregister_fd(self.fd_handle)
                     self.fd_handle = None
